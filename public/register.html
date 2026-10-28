@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register · CodeArena</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="card auth-card">
+      <div class="logo" style="font-size:26px">Code<span>Arena</span></div>
+      <p class="sub">Create your student account</p>
+      <form id="form">
+        <label for="name">Full name</label>
+        <input id="name" required>
+        <label for="email">RVCE email</label>
+        <input id="email" type="email" placeholder="you@rvce.edu.in" required>
+        <label for="password">Password (min 6 characters)</label>
+        <input id="password" type="password" minlength="6" required>
+        <label for="confirm">Confirm password</label>
+        <input id="confirm" type="password" minlength="6" required>
+        <button class="btn" id="btn" style="width:100%;margin-top:20px">Create account</button>
+        <div class="error" id="err"></div>
+      </form>
+      <p class="muted" style="font-size:14px;text-align:center;margin-bottom:0">
+        Already registered? <a href="/login.html">Log in</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    if (localStorage.getItem('ca_token')) location.href = '/problems.html';
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err');
+      const btn = document.getElementById('btn');
+      const email = document.getElementById('email').value.trim().toLowerCase();
+      const password = document.getElementById('password').value;
+      err.textContent = '';
+
+      if (!email.endsWith('@rvce.edu.in')) { err.textContent = 'Use your @rvce.edu.in email'; return; }
+      if (password !== document.getElementById('confirm').value) { err.textContent = 'Passwords do not match'; return; }
+
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: document.getElementById('name').value, email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Registration failed');
+        localStorage.setItem('ca_token', data.token);
+        localStorage.setItem('ca_user', JSON.stringify(data.user));
+        location.href = '/problems.html';
+      } catch (ex) {
+        err.textContent = ex.message;
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

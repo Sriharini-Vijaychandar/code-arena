@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Problem · CodeArena</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar" id="nav"></header>
+
+  <main class="container" id="main">
+    <p style="margin:0 0 16px"><a href="/problems.html">← All problems</a></p>
+    <div class="grid-2">
+      <div class="card">
+        <h1 id="title">Loading...</h1>
+        <p class="sub" id="limits"></p>
+        <div class="statement" id="statement"></div>
+        <div id="formats"></div>
+        <div id="samples"></div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="row" style="justify-content:space-between">
+            <h2 style="margin:0">Your solution</h2>
+            <select id="lang" style="width:auto">
+              <option value="cpp">C++</option>
+              <option value="python">Python 3</option>
+            </select>
+          </div>
+          <textarea id="code" class="code" spellcheck="false" style="margin-top:12px"></textarea>
+          <div class="row" style="margin-top:12px">
+            <button class="btn" id="submitBtn">Submit</button>
+            <span class="muted" style="font-size:13px">Read from standard input, print to standard output.</span>
+          </div>
+          <div class="error" id="err"></div>
+          <div id="result"></div>
+        </div>
+
+        <div class="card" style="padding:16px 20px">
+          <h2>My submissions</h2>
+          <table>
+            <thead><tr><th>When</th><th>Language</th><th>Verdict</th><th>Tests</th></tr></thead>
+            <tbody id="mine"><tr><td colspan="4" class="muted">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('ca_token');
+    const me = JSON.parse(localStorage.getItem('ca_user') || 'null');
+    if (!token || !me) { location.href = '/login.html'; throw new Error('Not logged in'); }
+
+    const $ = (id) => document.getElementById(id);
+    const VERDICT_LABELS = { AC: 'Accepted', WA: 'Wrong Answer', TLE: 'Time Limit Exceeded', RE: 'Runtime Error', CE: 'Compilation Error', SE: 'Judge Error', queued: 'Queued', running: 'Running' };
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token } });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { logout(); throw new Error('Please log in'); }
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      return data;
+    }
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function badge(status) {
+      const text = (status === 'queued' || status === 'running') ? VERDICT_LABELS[status] : status;
+      return `<span class="badge v-${status}" title="${VERDICT_LABELS[status] || status}">${text}</span>`;
+    }
+    function fmtTime(d) { return new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+    function logout() { localStorage.removeItem('ca_token'); localStorage.removeItem('ca_user'); location.href = '/login.html'; }
+    function renderNav(active) {
+      const links = [['problems', 'Problems', '/problems.html'], ['submissions', 'Submissions', '/submissions.html'], ['leaderboard', 'Leaderboard', '/leaderboard.html']];
+      if (me.role === 'admin') links.push(['admin', 'New Problem', '/admin.html']);
+      $('nav').innerHTML = `<div class="topbar-inner">
+        <a class="logo" href="/problems.html">Code<span>Arena</span></a>
+        <nav class="nav-links">${links.map(([k, label, href]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('')}</nav>
+        <div class="user-box">${esc(me.name)} · ${me.role === 'admin' ? 'Faculty' : 'Student'}
+          <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button></div></div>`;
+    }
+  </script>
+
+  <script>
+    renderNav('problems');
+
+    const problemId = new URLSearchParams(location.search).get('id');
+    if (!problemId) location.href = '/problems.html';
+
+    const TEMPLATES = {
+      cpp: '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    \n    return 0;\n}\n',
+      python: 'import sys\n\ndef main():\n    data = sys.stdin.read().split()\n    \n\nmain()\n'
+    };
+
+    const langEl = $('lang');
+    const codeEl = $('code');
+    const submitBtn = $('submitBtn');
+    let pollTimer = null;
+
+    // Drafts are saved in the browser per problem + language
+    const draftKey = (lang) => `ca_draft_${problemId}_${lang}`;
+    function loadDraft() {
+      const saved = localStorage.getItem(draftKey(langEl.value));
+      codeEl.value = saved !== null ? saved : TEMPLATES[langEl.value];
+    }
+    langEl.value = localStorage.getItem('ca_lang') || 'cpp';
+    langEl.addEventListener('change', () => { localStorage.setItem('ca_lang', langEl.value); loadDraft(); });
+    codeEl.addEventListener('input', () => localStorage.setItem(draftKey(langEl.value), codeEl.value));
+    codeEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = codeEl.selectionStart, end = codeEl.selectionEnd;
+        codeEl.value = codeEl.value.slice(0, start) + '    ' + codeEl.value.slice(end);
+        codeEl.selectionStart = codeEl.selectionEnd = start + 4;
+        codeEl.dispatchEvent(new Event('input'));
+      }
+    });
+    loadDraft();
+
+    async function loadProblem() {
+      const p = await api('/api/problems/' + problemId);
+      document.title = p.title + ' · CodeArena';
+      $('title').textContent = p.title;
+      $('limits').textContent = `Time limit: ${p.timeLimit}s · Memory limit: ${p.memoryLimit} MB`
+        + (p.testCount !== undefined ? ` · ${p.testCount} hidden tests` : '');
+      $('statement').textContent = p.statement;
+      $('formats').innerHTML =
+        (p.inputFormat ? `<h2 style="margin-top:20px">Input</h2><div class="statement">${esc(p.inputFormat)}</div>` : '') +
+        (p.outputFormat ? `<h2 style="margin-top:20px">Output</h2><div class="statement">${esc(p.outputFormat)}</div>` : '');
+      $('samples').innerHTML = (p.samples || []).map((s, i) => `
+        <h2 style="margin-top:20px">Sample ${i + 1}</h2>
+        <div class="grid-2" style="gap:12px">
+          <div><div class="muted" style="font-size:13px">Input</div><pre>${esc(s.input)}</pre></div>
+          <div><div class="muted" style="font-size:13px">Output</div><pre>${esc(s.output)}</pre></div>
+        </div>`).join('');
+    }
+
+    function renderResult(s) {
+      let html;
+      if (s.status === 'queued') {
+        html = `<span class="spinner"></span><b>Queued</b> <span class="muted">· position #${s.queuePosition || 1} in the judge queue</span>`;
+      } else if (s.status === 'running') {
+        html = `<span class="spinner"></span><b>Running</b> <span class="muted">on hidden tests...</span>`;
+      } else {
+        html = `<div class="row" style="gap:10px">${badge(s.status)} <b>${VERDICT_LABELS[s.status]}</b></div>`;
+        if (s.status === 'AC') {
+          html += `<p class="muted" style="margin:8px 0 0">Passed all ${s.total} tests · slowest ${s.timeMs ?? '-'} ms</p>`;
+        } else if (['WA', 'TLE', 'RE'].includes(s.status)) {
+          html += `<p class="muted" style="margin:8px 0 0">Failed on test ${s.failedTest} of ${s.total}${s.message ? ' · ' + esc(s.message) : ''}</p>`;
+        } else if (s.message) {
+          html += `<pre>${esc(s.message)}</pre>`;
+        }
+      }
+      $('result').innerHTML = `<div class="result-box">${html}</div>`;
+    }
+
+    async function watch(id) {
+      clearTimeout(pollTimer);
+      submitBtn.disabled = true;
+      try {
+        const s = await api('/api/submissions/' + id);
+        renderResult(s);
+        if (s.status === 'queued' || s.status === 'running') {
+          pollTimer = setTimeout(() => watch(id), 1000);
+          return;
+        }
+        loadMine();
+      } catch (e) {
+        $('err').textContent = e.message;
+        pollTimer = setTimeout(() => watch(id), 3000);
+        return;
+      }
+      submitBtn.disabled = false;
+    }
+
+    submitBtn.addEventListener('click', async () => {
+      $('err').textContent = '';
+      submitBtn.disabled = true;
+      try {
+        const r = await api('/api/submissions', {
+          method: 'POST',
+          body: JSON.stringify({ problemId, language: langEl.value, code: codeEl.value })
+        });
+        watch(r.id);
+      } catch (e) {
+        $('err').textContent = e.message;
+        submitBtn.disabled = false;
+      }
+    });
+
+    async function loadMine() {
+      const subs = await api('/api/submissions?problemId=' + problemId);
+      $('mine').innerHTML = subs.length
+        ? subs.slice(0, 10).map(s => `
+            <tr>
+              <td>${fmtTime(s.createdAt)}</td>
+              <td>${s.language === 'cpp' ? 'C++' : 'Python'}</td>
+              <td>${badge(s.status)}</td>
+              <td>${s.total ? s.passed + '/' + s.total : '–'}</td>
+            </tr>`).join('')
+        : `<tr><td colspan="4" class="muted">No submissions yet.</td></tr>`;
+      return subs;
+    }
+
+    (async () => {
+      try {
+        await loadProblem();
+        const subs = await loadMine();
+        if (subs[0] && (subs[0].status === 'queued' || subs[0].status === 'running')) watch(subs[0]._id);
+      } catch (e) {
+        $('main').innerHTML = `<div class="card">${esc(e.message)}. <a href="/problems.html">Back to problems</a></div>`;
+      }
+    })();
+  </script>
+</body>
+</html>

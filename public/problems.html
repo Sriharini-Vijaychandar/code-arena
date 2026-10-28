@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Problems · CodeArena</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar" id="nav"></header>
+
+  <main class="container">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <h1>Problems</h1>
+        <p class="sub">Solve in C++ or Python. Your code runs against hidden tests.</p>
+      </div>
+      <a id="newBtn" class="btn" href="/admin.html" style="display:none">+ New problem</a>
+    </div>
+
+    <div class="card" style="padding:8px 16px">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Title</th><th>Time limit</th><th>Memory</th><th id="lastHead">Status</th></tr>
+        </thead>
+        <tbody id="list"><tr><td colspan="5" class="muted">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('ca_token');
+    const me = JSON.parse(localStorage.getItem('ca_user') || 'null');
+    if (!token || !me) { location.href = '/login.html'; throw new Error('Not logged in'); }
+
+    const $ = (id) => document.getElementById(id);
+    const VERDICT_LABELS = { AC: 'Accepted', WA: 'Wrong Answer', TLE: 'Time Limit Exceeded', RE: 'Runtime Error', CE: 'Compilation Error', SE: 'Judge Error', queued: 'Queued', running: 'Running' };
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token } });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { logout(); throw new Error('Please log in'); }
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      return data;
+    }
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function badge(status) {
+      const text = (status === 'queued' || status === 'running') ? VERDICT_LABELS[status] : status;
+      return `<span class="badge v-${status}" title="${VERDICT_LABELS[status] || status}">${text}</span>`;
+    }
+    function fmtTime(d) { return new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+    function logout() { localStorage.removeItem('ca_token'); localStorage.removeItem('ca_user'); location.href = '/login.html'; }
+    function renderNav(active) {
+      const links = [['problems', 'Problems', '/problems.html'], ['submissions', 'Submissions', '/submissions.html'], ['leaderboard', 'Leaderboard', '/leaderboard.html']];
+      if (me.role === 'admin') links.push(['admin', 'New Problem', '/admin.html']);
+      $('nav').innerHTML = `<div class="topbar-inner">
+        <a class="logo" href="/problems.html">Code<span>Arena</span></a>
+        <nav class="nav-links">${links.map(([k, label, href]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('')}</nav>
+        <div class="user-box">${esc(me.name)} · ${me.role === 'admin' ? 'Faculty' : 'Student'}
+          <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button></div></div>`;
+    }
+  </script>
+
+  <script>
+    renderNav('problems');
+    const isAdmin = me.role === 'admin';
+    if (isAdmin) {
+      $('newBtn').style.display = '';
+      $('lastHead').textContent = 'Hidden tests';
+    }
+
+    async function load() {
+      const problems = await api('/api/problems');
+      if (!problems.length) {
+        $('list').innerHTML = `<tr><td colspan="5" class="muted">No problems yet.</td></tr>`;
+        return;
+      }
+      $('list').innerHTML = problems.map((p, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td><a href="/problem.html?id=${p._id}"><b>${esc(p.title)}</b></a></td>
+          <td>${p.timeLimit}s</td>
+          <td>${p.memoryLimit} MB</td>
+          <td>${isAdmin
+            ? `${p.testCount} &nbsp; <button class="btn btn-danger btn-sm" onclick="removeProblem('${p._id}')">Delete</button>`
+            : (p.solved ? '<span class="check">✓ Solved</span>' : '<span class="muted">Not solved</span>')}</td>
+        </tr>`).join('');
+    }
+
+    async function removeProblem(id) {
+      if (!confirm('Delete this problem, its hidden tests and all its submissions?')) return;
+      try { await api('/api/problems/' + id, { method: 'DELETE' }); load(); }
+      catch (e) { alert(e.message); }
+    }
+
+    load().catch(e => { $('list').innerHTML = `<tr><td colspan="5" class="error">${esc(e.message)}</td></tr>`; });
+  </script>
+</body>
+</html>

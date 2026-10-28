@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submissions · CodeArena</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar" id="nav"></header>
+
+  <main class="container">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <h1>Submissions</h1>
+        <p class="sub" id="subtitle">Your submission history</p>
+      </div>
+      <select id="scope" style="width:auto;display:none">
+        <option value="all">All students</option>
+        <option value="mine">Only mine</option>
+      </select>
+    </div>
+
+    <div class="card" style="padding:8px 16px">
+      <table>
+        <thead>
+          <tr>
+            <th>When</th><th id="userHead" style="display:none">Student</th><th>Problem</th>
+            <th>Language</th><th>Verdict</th><th>Tests</th><th>Time</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="list"><tr><td colspan="8" class="muted">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="detail" style="display:none"></div>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('ca_token');
+    const me = JSON.parse(localStorage.getItem('ca_user') || 'null');
+    if (!token || !me) { location.href = '/login.html'; throw new Error('Not logged in'); }
+
+    const $ = (id) => document.getElementById(id);
+    const VERDICT_LABELS = { AC: 'Accepted', WA: 'Wrong Answer', TLE: 'Time Limit Exceeded', RE: 'Runtime Error', CE: 'Compilation Error', SE: 'Judge Error', queued: 'Queued', running: 'Running' };
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token } });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { logout(); throw new Error('Please log in'); }
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      return data;
+    }
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function badge(status) {
+      const text = (status === 'queued' || status === 'running') ? VERDICT_LABELS[status] : status;
+      return `<span class="badge v-${status}" title="${VERDICT_LABELS[status] || status}">${text}</span>`;
+    }
+    function fmtTime(d) { return new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+    function logout() { localStorage.removeItem('ca_token'); localStorage.removeItem('ca_user'); location.href = '/login.html'; }
+    function renderNav(active) {
+      const links = [['problems', 'Problems', '/problems.html'], ['submissions', 'Submissions', '/submissions.html'], ['leaderboard', 'Leaderboard', '/leaderboard.html']];
+      if (me.role === 'admin') links.push(['admin', 'New Problem', '/admin.html']);
+      $('nav').innerHTML = `<div class="topbar-inner">
+        <a class="logo" href="/problems.html">Code<span>Arena</span></a>
+        <nav class="nav-links">${links.map(([k, label, href]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('')}</nav>
+        <div class="user-box">${esc(me.name)} · ${me.role === 'admin' ? 'Faculty' : 'Student'}
+          <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button></div></div>`;
+    }
+  </script>
+
+  <script>
+    renderNav('submissions');
+    const isAdmin = me.role === 'admin';
+    let refreshTimer = null;
+
+    if (isAdmin) {
+      $('scope').style.display = '';
+      $('userHead').style.display = '';
+      $('subtitle').textContent = 'All student submissions (faculty view)';
+      $('scope').addEventListener('change', () => {
+        $('subtitle').textContent = $('scope').value === 'all' ? 'All student submissions (faculty view)' : 'Your submission history';
+        load();
+      });
+    }
+
+    async function load() {
+      clearTimeout(refreshTimer);
+      const query = isAdmin && $('scope').value === 'all' ? '?scope=all' : '';
+      const subs = await api('/api/submissions' + query);
+      const showUser = isAdmin;
+
+      $('list').innerHTML = subs.length
+        ? subs.map(s => `
+          <tr>
+            <td>${fmtTime(s.createdAt)}</td>
+            ${showUser ? `<td>${esc(s.user ? s.user.name : '(deleted)')}</td>` : ''}
+            <td>${s.problem ? `<a href="/problem.html?id=${s.problem._id}">${esc(s.problem.title)}</a>` : '(deleted)'}</td>
+            <td>${s.language === 'cpp' ? 'C++' : 'Python'}</td>
+            <td>${badge(s.status)}</td>
+            <td>${s.total ? s.passed + '/' + s.total : '–'}</td>
+            <td>${s.timeMs != null ? s.timeMs + ' ms' : '–'}</td>
+            <td><button class="btn btn-outline btn-sm" onclick="view('${s._id}')">View</button></td>
+          </tr>`).join('')
+        : `<tr><td colspan="8" class="muted">No submissions yet.</td></tr>`;
+
+      if (subs.some(s => s.status === 'queued' || s.status === 'running')) {
+        refreshTimer = setTimeout(() => load().catch(() => {}), 3000);
+      }
+    }
+
+    async function view(id) {
+      try {
+        const s = await api('/api/submissions/' + id);
+        $('detail').style.display = '';
+        $('detail').innerHTML = `
+          <div class="row" style="justify-content:space-between">
+            <h2 style="margin:0">${esc(s.problem ? s.problem.title : 'Submission')} &nbsp;${badge(s.status)}</h2>
+            <span class="muted">${esc(s.user ? s.user.name : '')} · ${s.language === 'cpp' ? 'C++' : 'Python'} · ${fmtTime(s.createdAt)}</span>
+          </div>
+          ${s.failedTest ? `<p class="muted">Failed on test ${s.failedTest} of ${s.total}${s.message ? ' · ' + esc(s.message) : ''}</p>` : ''}
+          ${(s.status === 'CE' || s.status === 'SE') && s.message ? `<label>Message</label><pre>${esc(s.message)}</pre>` : ''}
+          <label>Code</label>
+          <pre>${esc(s.code)}</pre>`;
+        $('detail').scrollIntoView({ behavior: 'smooth' });
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    load().catch(e => { $('list').innerHTML = `<tr><td colspan="8" class="error">${esc(e.message)}</td></tr>`; });
+  </script>
+</body>
+</html>

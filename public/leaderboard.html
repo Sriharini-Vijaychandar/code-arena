@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leaderboard · CodeArena</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar" id="nav"></header>
+
+  <main class="container" style="max-width:900px">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <h1>Leaderboard</h1>
+        <p class="sub">Ranked by problems solved, then fewer wrong attempts, then earliest last accepted solution. Compilation errors don't count against you.</p>
+      </div>
+      <span class="muted" id="updated" style="font-size:13px"></span>
+    </div>
+
+    <div class="card" style="padding:8px 16px">
+      <table>
+        <thead><tr><th>Rank</th><th>Student</th><th>Solved</th><th>Wrong attempts</th><th>Last accepted</th></tr></thead>
+        <tbody id="list"><tr><td colspan="5" class="muted">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('ca_token');
+    const me = JSON.parse(localStorage.getItem('ca_user') || 'null');
+    if (!token || !me) { location.href = '/login.html'; throw new Error('Not logged in'); }
+
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token } });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { logout(); throw new Error('Please log in'); }
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      return data;
+    }
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function fmtTime(d) { return new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+    function logout() { localStorage.removeItem('ca_token'); localStorage.removeItem('ca_user'); location.href = '/login.html'; }
+    function renderNav(active) {
+      const links = [['problems', 'Problems', '/problems.html'], ['submissions', 'Submissions', '/submissions.html'], ['leaderboard', 'Leaderboard', '/leaderboard.html']];
+      if (me.role === 'admin') links.push(['admin', 'New Problem', '/admin.html']);
+      $('nav').innerHTML = `<div class="topbar-inner">
+        <a class="logo" href="/problems.html">Code<span>Arena</span></a>
+        <nav class="nav-links">${links.map(([k, label, href]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('')}</nav>
+        <div class="user-box">${esc(me.name)} · ${me.role === 'admin' ? 'Faculty' : 'Student'}
+          <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button></div></div>`;
+    }
+  </script>
+
+  <script>
+    renderNav('leaderboard');
+
+    async function load() {
+      const rows = await api('/api/leaderboard');
+      $('list').innerHTML = rows.length
+        ? rows.map(r => `
+          <tr style="${r.isMe ? 'background:var(--brand-soft)' : ''}">
+            <td><b>${r.rank}</b></td>
+            <td>${esc(r.name)}${r.isMe ? ' <span class="muted">(you)</span>' : ''}</td>
+            <td><b>${r.solved}</b></td>
+            <td>${r.wrongAttempts}</td>
+            <td>${r.lastAc ? fmtTime(r.lastAc) : '–'}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="5" class="muted">No students registered yet.</td></tr>`;
+      $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString('en-IN');
+    }
+
+    load().catch(e => { $('list').innerHTML = `<tr><td colspan="5" class="error">${esc(e.message)}</td></tr>`; });
+    setInterval(() => load().catch(() => {}), 10000);
+  </script>
+</body>
+</html>

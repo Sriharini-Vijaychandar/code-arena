@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log in · CodeArena</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="card auth-card">
+      <div class="logo" style="font-size:26px">Code<span>Arena</span></div>
+      <p class="sub">Write code. Get a verdict.</p>
+      <form id="form">
+        <label for="email">Email</label>
+        <input id="email" type="email" placeholder="you@rvce.edu.in" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" required>
+        <button class="btn" id="btn" style="width:100%;margin-top:20px">Log in</button>
+        <div class="error" id="err"></div>
+      </form>
+      <p class="muted" style="font-size:14px;text-align:center;margin-bottom:0">
+        New student? <a href="/register.html">Create an account</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    if (localStorage.getItem('ca_token')) location.href = '/problems.html';
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err');
+      const btn = document.getElementById('btn');
+      err.textContent = '';
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+        localStorage.setItem('ca_token', data.token);
+        localStorage.setItem('ca_user', JSON.stringify(data.user));
+        location.href = '/problems.html';
+      } catch (ex) {
+        err.textContent = ex.message;
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

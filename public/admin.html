@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Problem · CodeArena</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar" id="nav"></header>
+
+  <main class="container" style="max-width:900px">
+    <h1>New problem</h1>
+    <p class="sub">Students see the statement and samples. Hidden tests are never shown to them.</p>
+
+    <div class="card" id="engine" style="padding:14px 20px"><span class="muted">Checking judge engine...</span></div>
+
+    <div class="card">
+      <label for="title" style="margin-top:0">Title</label>
+      <input id="title" maxlength="120" placeholder="e.g. Sum of Two Numbers">
+
+      <label for="statement">Statement</label>
+      <textarea id="statement" rows="6" placeholder="Describe the task"></textarea>
+
+      <div class="grid-2">
+        <div>
+          <label for="inputFormat">Input format</label>
+          <textarea id="inputFormat" rows="3"></textarea>
+        </div>
+        <div>
+          <label for="outputFormat">Output format</label>
+          <textarea id="outputFormat" rows="3"></textarea>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div>
+          <label for="timeLimit">Time limit (seconds, 0.5 to 5)</label>
+          <input id="timeLimit" type="number" value="2" min="0.5" max="5" step="0.5">
+        </div>
+        <div>
+          <label for="memoryLimit">Memory limit (MB, 32 to 1024)</label>
+          <input id="memoryLimit" type="number" value="256" min="32" max="1024" step="32">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Samples (shown to students)</h2>
+        <button class="btn btn-outline btn-sm" type="button" onclick="addCase('samples')">+ Add sample</button>
+      </div>
+      <div id="samples" style="margin-top:14px"></div>
+      <label style="font-weight:500;display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="samplesAsTests" checked style="width:auto"> Also judge submissions on the samples
+      </label>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Hidden tests</h2>
+        <button class="btn btn-outline btn-sm" type="button" onclick="addCase('tests')">+ Add test</button>
+      </div>
+      <div id="tests" style="margin-top:14px"></div>
+    </div>
+
+    <div class="row" style="margin-bottom:40px">
+      <button class="btn" id="createBtn">Create problem</button>
+      <span class="error" id="err" style="margin:0"></span>
+    </div>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('ca_token');
+    const me = JSON.parse(localStorage.getItem('ca_user') || 'null');
+    if (!token || !me) { location.href = '/login.html'; throw new Error('Not logged in'); }
+
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token } });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { logout(); throw new Error('Please log in'); }
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      return data;
+    }
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function logout() { localStorage.removeItem('ca_token'); localStorage.removeItem('ca_user'); location.href = '/login.html'; }
+    function renderNav(active) {
+      const links = [['problems', 'Problems', '/problems.html'], ['submissions', 'Submissions', '/submissions.html'], ['leaderboard', 'Leaderboard', '/leaderboard.html']];
+      if (me.role === 'admin') links.push(['admin', 'New Problem', '/admin.html']);
+      $('nav').innerHTML = `<div class="topbar-inner">
+        <a class="logo" href="/problems.html">Code<span>Arena</span></a>
+        <nav class="nav-links">${links.map(([k, label, href]) => `<a href="${href}" class="${k === active ? 'active' : ''}">${label}</a>`).join('')}</nav>
+        <div class="user-box">${esc(me.name)} · ${me.role === 'admin' ? 'Faculty' : 'Student'}
+          <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button></div></div>`;
+    }
+  </script>
+
+  <script>
+    if (me.role !== 'admin') { location.href = '/problems.html'; throw new Error('Faculty only'); }
+    renderNav('admin');
+
+    function addCase(kind, input = '', output = '') {
+      const div = document.createElement('div');
+      div.className = 'case-row';
+      div.innerHTML = `
+        <div class="case-head">
+          <span class="case-title"></span>
+          <button class="btn btn-danger btn-sm" type="button">Remove</button>
+        </div>
+        <div class="grid-2" style="margin-top:8px;gap:12px">
+          <div><div class="muted" style="font-size:13px">Input</div><textarea class="code case-in" rows="4" spellcheck="false"></textarea></div>
+          <div><div class="muted" style="font-size:13px">Expected output</div><textarea class="code case-out" rows="4" spellcheck="false"></textarea></div>
+        </div>`;
+      div.querySelector('.case-in').value = input;
+      div.querySelector('.case-out').value = output;
+      div.querySelector('button').onclick = () => { div.remove(); renumber(kind); };
+      $(kind).appendChild(div);
+      renumber(kind);
+    }
+
+    function renumber(kind) {
+      [...$(kind).children].forEach((d, i) => {
+        d.querySelector('.case-title').textContent = (kind === 'samples' ? 'Sample ' : 'Test ') + (i + 1);
+      });
+    }
+
+    function readCases(kind) {
+      return [...$(kind).children]
+        .map(d => ({ input: d.querySelector('.case-in').value, output: d.querySelector('.case-out').value }))
+        .filter(c => c.output.trim() !== '');
+    }
+
+    addCase('samples');
+    addCase('tests');
+    addCase('tests');
+
+    $('createBtn').addEventListener('click', async () => {
+      $('err').textContent = '';
+      const samples = readCases('samples');
+      let tests = readCases('tests');
+      if ($('samplesAsTests').checked) tests = [...samples, ...tests];
+
+      const body = {
+        title: $('title').value.trim(),
+        statement: $('statement').value.trim(),
+        inputFormat: $('inputFormat').value.trim(),
+        outputFormat: $('outputFormat').value.trim(),
+        timeLimit: Number($('timeLimit').value),
+        memoryLimit: Number($('memoryLimit').value),
+        samples,
+        tests
+      };
+
+      if (!body.title || !body.statement) { $('err').textContent = 'Title and statement are required'; return; }
+      if (!tests.length) { $('err').textContent = 'Add at least one hidden test with an expected output'; return; }
+
+      $('createBtn').disabled = true;
+      try {
+        const p = await api('/api/problems', { method: 'POST', body: JSON.stringify(body) });
+        location.href = '/problem.html?id=' + p._id;
+      } catch (e) {
+        $('err').textContent = e.message;
+        $('createBtn').disabled = false;
+      }
+    });
+
+    api('/api/judge-status').then(s => {
+      $('engine').innerHTML = s.online
+        ? `<span class="badge v-AC">Online</span> <span class="muted">&nbsp;Judge engine ready · ${esc(s.runtimes.join(', ') || 'no languages installed yet')}</span>`
+        : `<span class="badge v-WA">Offline</span> <span class="muted">&nbsp;Judge engine not reachable. Start Docker Desktop and run <code>docker compose up -d</code>. Submissions will wait in the queue until it's back.</span>`;
+    }).catch(() => {});
+  </script>
+</body>
+</html>
