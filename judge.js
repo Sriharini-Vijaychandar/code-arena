@@ -59,8 +59,12 @@ async function pistonExecute(language, files, stdin, timeLimitSec, memoryMB) {
     clearTimeout(timer);
   }
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error('Judge engine error: ' + (data.message || res.status));
+  const text = await res.text().catch(() => '');
+  let data = {};
+  try { data = JSON.parse(text); } catch { /* not JSON */ }
+  if (!res.ok) {
+    throw new Error(`Judge engine error ${res.status}: ${data.message || text.slice(0, 300) || 'no details'}`);
+  }
   return data;
 }
 
@@ -82,8 +86,14 @@ async function evaluate({ language, code, tests, timeLimit, memoryLimit }) {
   const file = { name: LANGUAGES[language].file, content: code };
 
   if (language === 'python') {
-    const check = await pistonExecute('python', [{ name: 'check.py', content: PY_SYNTAX_CHECKER }, file], '', 3, 256);
-    if (check.run && check.run.code === 3) {
+    let check = null;
+    try {
+      check = await pistonExecute('python', [{ name: 'check.py', content: PY_SYNTAX_CHECKER }, file], '', 3, 256);
+    } catch (err) {
+      if (err instanceof EngineDownError) throw err;
+      console.warn('Python syntax check skipped:', err.message); // judge the code normally instead
+    }
+    if (check && check.run && check.run.code === 3) {
       return { status: 'CE', passed: 0, total, message: clip(check.run.stdout) };
     }
   }

@@ -8,7 +8,8 @@ const FACULTY = [
   { name: 'Faculty Admin', email: 'faculty@rvce.edu.in', password: 'faculty123' }
 ];
 
-const bigN = 100000;
+// Kept around 50 KB: the judge engine rejects requests over ~100 KB.
+const bigN = 10000;
 const bigInput = bigN + '\n' + Array.from({ length: bigN }, (_, i) => i + 1).join(' ') + '\n';
 
 const PROBLEMS = [
@@ -30,7 +31,7 @@ const PROBLEMS = [
   {
     title: 'Count Even Numbers',
     statement: 'Given N integers, print how many of them are even.',
-    inputFormat: 'The first line has N (1 <= N <= 10^5).\nThe second line has N integers.',
+    inputFormat: 'The first line has N (1 <= N <= 10^4).\nThe second line has N integers.',
     outputFormat: 'Print the number of even integers.',
     timeLimit: 2,
     memoryLimit: 256,
@@ -39,7 +40,7 @@ const PROBLEMS = [
       { input: '5\n1 2 3 4 6\n', output: '3\n' },
       { input: '3\n1 3 5\n', output: '0\n' },
       { input: '4\n-2 -1 0 7\n', output: '2\n' },
-      { input: bigInput, output: '50000\n' }
+      { input: bigInput, output: '5000\n' }
     ]
   }
 ];

@@ -9,6 +9,9 @@ const { User, Problem, TestCase, Submission } = require('./models');
 const { LANGUAGES } = require('./judge');
 const { startWorker } = require('./worker');
 
+// The judge engine rejects requests over ~100 KB, and each request carries code + one test's input.
+const MAX_TEST_INPUT_BYTES = 60 * 1024;
+
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -124,6 +127,8 @@ app.post('/api/problems', auth, adminOnly, wrap(async (req, res) => {
   if (!tests.length) return res.status(400).json({ error: 'Add at least one hidden test' });
   if (timeLimit < 0.5 || timeLimit > config.MAX_TIME_LIMIT) return res.status(400).json({ error: `Time limit must be 0.5 to ${config.MAX_TIME_LIMIT} seconds` });
   if (memoryLimit < 32 || memoryLimit > 1024) return res.status(400).json({ error: 'Memory limit must be 32 to 1024 MB' });
+  const bigTest = tests.findIndex(t => Buffer.byteLength(t.input, 'utf8') > MAX_TEST_INPUT_BYTES);
+  if (bigTest !== -1) return res.status(400).json({ error: `Test ${bigTest + 1} input is too large (max 60 KB per test)` });
 
   const problem = await Problem.create({
     title, statement, inputFormat, outputFormat, samples, timeLimit, memoryLimit, createdBy: req.user._id
